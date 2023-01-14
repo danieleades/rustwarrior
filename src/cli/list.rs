@@ -7,7 +7,7 @@ pub struct List {}
 
 impl List {
     pub fn run() -> anyhow::Result<()> {
-        let store = Store::load_from_dir_default()?;
+        let store = Store::load()?;
         if store.is_empty() {
             println!("no tasks to display");
             return Ok(());

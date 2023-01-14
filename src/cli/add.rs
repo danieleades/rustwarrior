@@ -9,12 +9,11 @@ pub struct Add {
 
 impl Add {
     pub fn run(self) -> anyhow::Result<()> {
-        let mut store = Store::load_from_dir_default()?;
-        let id = store.first_missing_id();
+        let mut store = Store::load()?;
 
-        let task = Task::new(id, self.description);
-        store.push(task);
-        store.save_to_dir_default()?;
+        let task = Task::new(self.description);
+        let id = store.push(task);
+        store.save()?;
         println!("Added task {id}");
         Ok(())
     }
