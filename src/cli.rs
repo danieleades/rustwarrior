@@ -45,9 +45,10 @@ impl Command {
 }
 
 #[cfg(test)]
-mod tests{
-    use test_case::test_case;
+mod tests {
     use clap::Parser;
+    use test_case::test_case;
+
     use super::Cli;
 
     #[test_case("rw" ; "empty")]
