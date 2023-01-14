@@ -1,10 +1,17 @@
 [package]
 name = "rustwarrior"
+description = "Command-line task tracking"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/danieleades/rustwarrior"
 rust-version = "1.62.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "rw"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.68"
@@ -18,4 +25,6 @@ thiserror = "1.0.38"
 uuid = { version = "1.2.2", features = ["v4", "serde"] }
 
 [dev-dependencies]
+shlex = "1.1.0"
 tempfile = "3.3.0"
+test-case = "2.2.2"

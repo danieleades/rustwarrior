@@ -1,8 +1,11 @@
 use std::{
     fs::{self, File},
     io::{self, BufRead, BufReader, BufWriter, Write},
+    ops::Deref,
     path::{Path, PathBuf},
 };
+
+use serde::{Deserialize, Serialize};
 
 use crate::task::Task;
 
@@ -17,53 +20,62 @@ fn default_data_dir() -> io::Result<PathBuf> {
     Ok(dir)
 }
 
+/// A collection of [`Tasks`](Task).
+///
+/// These are represented as [`OpenTasks`](OpenTask), which are simply a wrapper
+/// around a [`Task`] that adds a short ID field.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Store {
-    open_tasks: Vec<Task>,
+    open_tasks: Vec<OpenTask>,
 }
 
 impl Store {
-    pub fn load_from_dir(path: impl AsRef<Path>) -> Result<Self, Error> {
+    fn load_from_dir(path: impl AsRef<Path>) -> Result<Self, Error> {
         let open_tasks = load_tasks_from_file(path.as_ref().join(OPEN_TASKS_FILE))?;
 
         Ok(Self { open_tasks })
     }
 
-    pub fn load_from_dir_default() -> Result<Self, Error> {
+    /// Load the [`Tasks`](Task) from the default location on disk.
+    ///
+    /// Creates the directory and data file if not present.
+    ///
+    /// # Errors
+    ///
+    /// This method can fail if the default data location cannot be determined,
+    /// or is not read/writeable.
+    pub fn load() -> Result<Self, Error> {
         Self::load_from_dir(default_data_dir()?)
     }
 
-    pub fn push(&mut self, task: Task) {
-        self.open_tasks.push(task);
+    /// Add a [`Task`] to the [`Store`].
+    ///
+    /// Returns the new ID associated with the open [`Task`].
+    pub fn push(&mut self, task: Task) -> usize {
+        let id = self.first_missing_id();
+        let open_task = OpenTask { id, task };
+        self.open_tasks.push(open_task);
+        id
     }
 
-    pub fn save_to_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
+    fn save_to_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
         save_tasks_to_file(&self.open_tasks, path.as_ref().join(OPEN_TASKS_FILE))
     }
 
-    pub fn save_to_dir_default(&self) -> io::Result<()> {
+    /// Save the [`Tasks`](Task) to the default location on disk.
+    ///
+    /// Creates the directory and data file if not present.
+    ///
+    /// # Errors
+    ///
+    /// This method can fail if the default data location cannot be determined,
+    /// or is not writeable.
+    pub fn save(&self) -> io::Result<()> {
         self.save_to_dir(default_data_dir()?)
     }
 
-    /// Return the lowest ID in the list of tasks which is not already used
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use rustwarrior::{Store, Task};
-    ///
-    /// let mut store = Store::default();
-    ///
-    /// assert_eq!(store.first_missing_id(), 0);
-    ///
-    /// store.push(Task::new(0, "some task".to_string()));
-    /// store.push(Task::new(1, "some task".to_string()));
-    /// store.push(Task::new(3, "some task".to_string()));
-    ///
-    /// assert_eq!(store.first_missing_id(), 2);
-    /// ```
-    pub fn first_missing_id(&self) -> usize {
-        let mut ids: Vec<usize> = self.open_tasks.iter().map(Task::id).collect();
+    fn first_missing_id(&self) -> usize {
+        let mut ids: Vec<usize> = self.open_tasks.iter().map(|task| task.id).collect();
         ids.sort_unstable();
 
         ids.iter()
@@ -72,16 +84,20 @@ impl Store {
             .map_or(ids.len(), |(idx, _id)| idx)
     }
 
+    /// Returns the number of [`Tasks`](Task) in the [`Store`]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.open_tasks.len()
     }
 
+    /// Whether the [`Store`] is empty
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
-fn load_tasks_from_file(path: impl AsRef<Path>) -> Result<Vec<Task>, Error> {
+fn load_tasks_from_file(path: impl AsRef<Path>) -> Result<Vec<OpenTask>, Error> {
     let tasks_file = File::options()
         .create(true)
         .write(true)
@@ -93,7 +109,7 @@ fn load_tasks_from_file(path: impl AsRef<Path>) -> Result<Vec<Task>, Error> {
         .collect()
 }
 
-fn save_tasks_to_file(tasks: &[Task], path: impl AsRef<Path>) -> io::Result<()> {
+fn save_tasks_to_file(tasks: &[OpenTask], path: impl AsRef<Path>) -> io::Result<()> {
     let mut writer = BufWriter::new(File::create(path)?);
     tasks.iter().try_for_each(|task| {
         serde_json::to_writer(&mut writer, task)?;
@@ -103,6 +119,15 @@ fn save_tasks_to_file(tasks: &[Task], path: impl AsRef<Path>) -> io::Result<()> 
     writer.flush()
 }
 
+impl<'a> IntoIterator for &'a Store {
+    type IntoIter = std::slice::Iter<'a, OpenTask>;
+    type Item = &'a OpenTask;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.open_tasks.iter()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to load tasks from file: {0}")]
 pub enum Error {
@@ -110,12 +135,24 @@ pub enum Error {
     Io(#[from] io::Error),
 }
 
-impl<'a> IntoIterator for &'a Store {
-    type IntoIter = std::slice::Iter<'a, Task>;
-    type Item = &'a Task;
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OpenTask {
+    id: usize,
+    #[serde(flatten)]
+    task: Task,
+}
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.open_tasks.iter()
+impl OpenTask {
+    pub const fn id(&self) -> usize {
+        self.id
+    }
+}
+
+impl Deref for OpenTask {
+    type Target = Task;
+
+    fn deref(&self) -> &Self::Target {
+        &self.task
     }
 }
 
@@ -123,7 +160,7 @@ impl<'a> IntoIterator for &'a Store {
 mod tests {
     use tempfile::TempDir;
 
-    use super::Store;
+    use super::{OpenTask, Store};
     use crate::task::Task;
 
     #[test]
@@ -132,9 +169,9 @@ mod tests {
 
         let mut store = Store::load_from_dir(&dir).unwrap();
 
-        store.push(Task::new(1, "some task".to_string()));
-        store.push(Task::new(2, "some task".to_string()));
-        store.push(Task::new(3, "some task".to_string()));
+        store.push(Task::new("some task".to_string()));
+        store.push(Task::new("some task".to_string()));
+        store.push(Task::new("some task".to_string()));
 
         store.save_to_dir(&dir).unwrap();
 
@@ -149,16 +186,27 @@ mod tests {
 
         assert_eq!(store.first_missing_id(), 0);
 
-        store.push(Task::new(0, "some task".to_string()));
+        store.open_tasks.push(OpenTask {
+            id: 0,
+            task: Task::new("some task".to_string()),
+        });
 
         assert_eq!(store.first_missing_id(), 1);
 
-        store.push(Task::new(1, "some task".to_string()));
-        store.push(Task::new(3, "some task".to_string()));
+        store.open_tasks.push(OpenTask {
+            id: 1,
+            task: Task::new("some task".to_string()),
+        });
+        store.open_tasks.push(OpenTask {
+            id: 3,
+            task: Task::new("some task".to_string()),
+        });
 
         assert_eq!(store.first_missing_id(), 2);
-
-        store.push(Task::new(2, "some task".to_string()));
+        store.open_tasks.push(OpenTask {
+            id: 2,
+            task: Task::new("some task".to_string()),
+        });
 
         assert_eq!(store.first_missing_id(), 4);
     }

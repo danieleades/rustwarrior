@@ -43,3 +43,18 @@ impl Command {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+    use test_case::test_case;
+
+    use super::Cli;
+
+    #[test_case("rw" ; "empty")]
+    #[test_case("rw list")]
+    #[test_case(r#"rw add "some new task""# ; "add")]
+    fn parse(input: &str) {
+        Cli::parse_from(shlex::split(input).unwrap());
+    }
+}
