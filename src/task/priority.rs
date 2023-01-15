@@ -1,11 +1,25 @@
+use std::{fmt::Display, str::FromStr};
+
 use serde::{Deserialize, Serialize};
 
+/// The task priority. [`Priority::One`] (1) is the highest.
+///
+/// When compared, priorities are sorted lowest to highest. This means that
+/// [`Priority::Four`] is considered the *lowest* value, and [`Priority::One`]
+/// the the highest value.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum Priority {
+    /// P1 priority
     One,
+
+    /// P2 priority
     Two,
+
+    /// P3 priority
     Three,
+
+    /// P4 priority
     Four,
 }
 
@@ -27,7 +41,7 @@ impl From<Priority> for u8 {
 }
 
 impl TryFrom<u8> for Priority {
-    type Error = Error;
+    type Error = Error<u8>;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -40,9 +54,24 @@ impl TryFrom<u8> for Priority {
     }
 }
 
+impl FromStr for Priority {
+    type Err = Error<String>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let int: u8 = s.parse().map_err(|_| Error(s.to_string()))?;
+        Self::try_from(int).map_err(|_| Error(s.to_string()))
+    }
+}
+
+impl Display for Priority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", u8::from(*self))
+    }
+}
+
 #[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
 #[error("invalid priority value '{0}'. Expected 1-4")]
-pub struct Error(u8);
+pub struct Error<T>(T);
 
 #[cfg(test)]
 mod tests {
@@ -56,7 +85,7 @@ mod tests {
     #[test_case(3 => Ok(Priority::Three); "3")]
     #[test_case(4 => Ok(Priority::Four); "4")]
     #[test_case(5 => Err(Error(5)); "5")]
-    fn parse(input: u8) -> Result<Priority, Error> {
+    fn parse(input: u8) -> Result<Priority, Error<u8>> {
         Priority::try_from(input)
     }
 

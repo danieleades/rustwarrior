@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use self::priority::Priority;
+pub use self::priority::Priority;
 
 mod priority;
 
