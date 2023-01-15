@@ -5,16 +5,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use rustwarrior_core::Task;
 use serde::{Deserialize, Serialize};
 
-use crate::task::Task;
+use crate::APPLICATION_NAME;
 
 const OPEN_TASKS_FILE: &str = "open_tasks.ndjson";
 
 fn default_data_dir() -> io::Result<PathBuf> {
     let dir = dirs::data_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "couldn't find data directory"))?
-        .join("rustwarrior");
+        .join(APPLICATION_NAME);
 
     fs::create_dir_all(&dir)?;
     Ok(dir)
@@ -75,7 +76,7 @@ impl Store {
     }
 
     fn first_missing_id(&self) -> usize {
-        let mut ids: Vec<usize> = self.open_tasks.iter().map(|task| task.id).collect();
+        let mut ids: Vec<usize> = self.open_tasks.iter().map(OpenTask::id).collect();
         ids.sort_unstable();
 
         ids.iter()
@@ -158,10 +159,10 @@ impl Deref for OpenTask {
 
 #[cfg(test)]
 mod tests {
+    use rustwarrior_core::Task;
     use tempfile::TempDir;
 
-    use super::{OpenTask, Store};
-    use crate::task::Task;
+    use crate::store::{OpenTask, Store};
 
     #[test]
     fn save_to_directory() {

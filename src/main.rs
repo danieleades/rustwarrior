@@ -12,6 +12,9 @@ use cli::Cli;
 
 mod cli;
 mod config;
+mod store;
+
+const APPLICATION_NAME: &str = "rustwarrior";
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::default();

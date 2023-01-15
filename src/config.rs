@@ -4,8 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rustwarrior::task::Coefficients;
+use rustwarrior_core::Coefficients;
 use serde::{Deserialize, Serialize};
+
+use crate::APPLICATION_NAME;
 
 const CONFIG_FILE: &str = "config.toml";
 
@@ -25,7 +27,7 @@ impl Config {
 fn default_config_dir() -> io::Result<PathBuf> {
     let dir = dirs::config_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "couldn't find data directory"))?
-        .join("rustwarrior");
+        .join(APPLICATION_NAME);
 
     fs::create_dir_all(&dir)?;
     Ok(dir)

@@ -1,8 +1,7 @@
 use clap::Parser;
 use comfy_table::{presets::UTF8_HORIZONTAL_ONLY, Attribute, Cell, ContentArrangement, Table};
-use rustwarrior::Store;
 
-use crate::config::Config;
+use crate::{config::Config, store::Store};
 
 #[derive(Debug, Default, Parser)]
 pub struct List {}
