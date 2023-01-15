@@ -13,16 +13,35 @@ impl List {
             return Ok(());
         }
         let mut table = Table::new();
+
+        let has_priority = (&store).into_iter().any(|task| task.priority().is_some());
+        println!("has priority: {has_priority:?}");
+
+        let mut header = vec![Cell::new("ID").add_attribute(Attribute::Bold)];
+        if has_priority {
+            header.push(Cell::new("Priority").add_attribute(Attribute::Bold));
+        }
+        header.push(Cell::new("Description").add_attribute(Attribute::Bold));
+
         table
             .load_preset(UTF8_HORIZONTAL_ONLY)
             .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("ID").add_attribute(Attribute::Bold),
-                Cell::new("Description").add_attribute(Attribute::Bold),
-            ]);
+            .set_header(header);
 
         for task in &store {
-            table.add_row(vec![Cell::new(task.id()), Cell::new(task.description())]);
+            if has_priority {
+                table.add_row(vec![
+                    Cell::new(task.id()),
+                    Cell::new(
+                        task.priority()
+                            .map(|priority| priority.to_string())
+                            .unwrap_or_default(),
+                    ),
+                    Cell::new(task.description()),
+                ]);
+            } else {
+                table.add_row(vec![Cell::new(task.id()), Cell::new(task.description())]);
+            }
         }
 
         println!("{table}");

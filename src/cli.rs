@@ -54,6 +54,9 @@ mod tests {
     #[test_case("rw" ; "empty")]
     #[test_case("rw list")]
     #[test_case(r#"rw add "some new task""# ; "add")]
+    #[test_case(r#"rw add "some new task" -p 1"# ; "priority short")]
+    #[test_case(r#"rw add "some new task" --priority 1"# ; "priority long")]
+    #[test_case(r#"rw add "some new task" --priority=1"# ; "priority long alt")]
     fn parse(input: &str) {
         Cli::parse_from(shlex::split(input).unwrap());
     }
