@@ -80,4 +80,13 @@ mod tests {
     fn deserialise(input: &str) -> Task {
         serde_json::from_str(input).unwrap()
     }
+
+    #[test]
+    fn priority() {
+        let task = Task::new("description".to_string());
+        assert!(task.priority().is_none());
+
+        let task2 = Task::new("description".to_string()).with_priority(Priority::Three);
+        assert!(matches!(task2.priority(), Some(Priority::Three)));
+    }
 }
