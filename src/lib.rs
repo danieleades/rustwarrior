@@ -9,7 +9,7 @@
 #![warn(clippy::pedantic, clippy::nursery)]
 
 mod store;
-mod task;
+pub mod task;
 
 pub use store::Store;
 pub use task::{Priority, Task};

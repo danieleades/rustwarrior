@@ -11,6 +11,7 @@
 use cli::Cli;
 
 mod cli;
+mod config;
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::default();
