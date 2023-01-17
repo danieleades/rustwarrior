@@ -1,9 +1,12 @@
+//! Tasks and associated objects
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use self::priority::Priority;
+pub use self::{coefficients::Coefficients, priority::Priority};
 
+mod coefficients;
 mod priority;
 
 /// A task to be completed
@@ -49,6 +52,21 @@ impl Task {
     #[must_use]
     pub const fn description(&self) -> &String {
         &self.description
+    }
+
+    /// Calculate the 'urgency' for a particular task.
+    ///
+    /// Urgency is based on a weighted polynomial. The coefficents are
+    /// configurable.
+    #[must_use]
+    pub fn urgency(&self, coefficients: &Coefficients) -> f32 {
+        self.priority
+            .map(|p| match p {
+                Priority::One => coefficients.priority.p1,
+                Priority::Two => coefficients.priority.p2,
+                Priority::Three => coefficients.priority.p3,
+            })
+            .unwrap_or_default()
     }
 }
 

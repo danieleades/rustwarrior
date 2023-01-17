@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// The task priority. [`Priority::One`] (1) is the highest.
 ///
 /// When compared, priorities are sorted lowest to highest. This means that
-/// [`Priority::Four`] is considered the *lowest* value, and [`Priority::One`]
+/// [`Priority::Three`] is considered the *lowest* value, and [`Priority::One`]
 /// the the highest value.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "u8", into = "u8")]
@@ -18,9 +18,6 @@ pub enum Priority {
 
     /// P3 priority
     Three,
-
-    /// P4 priority
-    Four,
 }
 
 impl PartialOrd for Priority {
@@ -35,7 +32,6 @@ impl From<Priority> for u8 {
             Priority::One => 1,
             Priority::Two => 2,
             Priority::Three => 3,
-            Priority::Four => 4,
         }
     }
 }
@@ -48,7 +44,6 @@ impl TryFrom<u8> for Priority {
             1 => Ok(Self::One),
             2 => Ok(Self::Two),
             3 => Ok(Self::Three),
-            4 => Ok(Self::Four),
             x => Err(Error(x)),
         }
     }
@@ -83,7 +78,6 @@ mod tests {
     #[test_case(1 => Ok(Priority::One); "1")]
     #[test_case(2 => Ok(Priority::Two); "2")]
     #[test_case(3 => Ok(Priority::Three); "3")]
-    #[test_case(4 => Ok(Priority::Four); "4")]
     #[test_case(5 => Err(Error(5)); "5")]
     fn parse(input: u8) -> Result<Priority, Error<u8>> {
         Priority::try_from(input)
@@ -93,6 +87,5 @@ mod tests {
     fn ord() {
         assert!(Priority::One > Priority::Two);
         assert!(Priority::Two > Priority::Three);
-        assert!(Priority::Three > Priority::Four);
     }
 }

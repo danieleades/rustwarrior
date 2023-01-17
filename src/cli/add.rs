@@ -1,5 +1,7 @@
 use clap::Parser;
-use rustwarrior::{Priority, Store, Task};
+use rustwarrior_core::{Priority, Task};
+
+use crate::store::Store;
 
 #[derive(Debug, Parser)]
 pub struct Add {
