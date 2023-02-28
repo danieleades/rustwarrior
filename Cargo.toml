@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.68"
 chrono = { version = "0.4.23", features = ["serde"] }
-clap = { version = "3.2.23", features = ["derive"] }
+clap = { version = "4.1.8", features = ["derive"] }
 comfy-table = "6.1.4"
 dirs = "4.0.0"
 serde = { version = "1.0.152", features = ["derive"] }
