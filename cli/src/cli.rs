@@ -20,16 +20,11 @@ impl Cli {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, Default)]
 pub enum Command {
     Add(Add),
+    #[default]
     List,
-}
-
-impl Default for Command {
-    fn default() -> Self {
-        Self::List
-    }
 }
 
 impl Command {

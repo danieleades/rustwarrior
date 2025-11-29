@@ -14,7 +14,5 @@ pub mod store;
 /// Task domain model
 pub mod task;
 
-pub use store::{Store, OpenTask};
-pub use store::paths;
-pub use store::Error as StoreError;
+pub use store::{Error as StoreError, OpenTask, Store, paths};
 pub use task::{Priority, Task};

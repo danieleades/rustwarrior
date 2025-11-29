@@ -1,8 +1,9 @@
 //! Path resolution for task storage with environment variable override
 
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 const OPEN_TASKS_FILE: &str = "open_tasks.ndjson";
 
@@ -22,12 +23,7 @@ pub fn get_data_dir() -> io::Result<PathBuf> {
     }
 
     let dir = dirs::data_dir()
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "couldn't find data directory",
-            )
-        })?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "couldn't find data directory"))?
         .join("rustwarrior");
 
     fs::create_dir_all(&dir)?;
@@ -38,7 +34,8 @@ pub fn get_data_dir() -> io::Result<PathBuf> {
 ///
 /// # Arguments
 ///
-/// * `data_dir` - Optional custom data directory. If None, uses `get_data_dir()`
+/// * `data_dir` - Optional custom data directory. If None, uses
+///   `get_data_dir()`
 ///
 /// # Errors
 ///
@@ -55,8 +52,9 @@ pub fn get_tasks_file(data_dir: Option<&Path>) -> io::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::env;
+
+    use super::*;
 
     #[test]
     fn test_get_data_dir_default() {

@@ -1,10 +1,10 @@
 //! Task management MCP server implementation
 
 use rmcp::{
-    handler::server::router::tool::ToolRouter,
-    handler::server::wrapper::Parameters,
+    ErrorData as McpError, ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    tool, tool_handler, tool_router,
 };
 use rustwarrior_core::{Priority, Store};
 use schemars::JsonSchema;
@@ -75,23 +75,11 @@ pub struct SearchTasksParams {
     pub priority: Option<u8>,
 }
 
-impl TaskHandler {
-    /// Create a new server handler
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            tool_router: Self::build_tool_router(),
-        }
-    }
-
-    pub(crate) fn build_tool_router() -> ToolRouter<Self> {
-        Self::tool_router()
-    }
-}
-
 impl Default for TaskHandler {
     fn default() -> Self {
-        Self::new()
+        Self {
+            tool_router: Self::tool_router(),
+        }
     }
 }
 
@@ -101,10 +89,10 @@ impl ServerHandler for TaskHandler {
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             instructions: Some(
-                "RustWarrior task management server. Use create_task to add tasks, \
-                 list_tasks to view them, complete_task to mark done, delete_task to remove, \
-                 set_priority to change priority (1-4), search_tasks to find tasks by \
-                 description, and get_task to view a specific task."
+                "RustWarrior task management server. Use create_task to add tasks, list_tasks to \
+                 view them, complete_task to mark done, delete_task to remove, set_priority to \
+                 change priority (1-4), search_tasks to find tasks by description, and get_task \
+                 to view a specific task."
                     .to_owned(),
             ),
             ..ServerInfo::default()
@@ -123,11 +111,7 @@ impl TaskHandler {
         params: Parameters<CreateTaskParams>,
     ) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let priority = if let Some(p) = input.priority {
-            Priority::try_from(p).ok()
-        } else {
-            None
-        };
+        let priority = input.priority.and_then(|p| Priority::try_from(p).ok());
 
         match load_and_save_store(|store| {
             let mut task = rustwarrior_core::Task::new(input.description);
@@ -147,7 +131,7 @@ impl TaskHandler {
                 meta: None,
             }),
             Err(e) => Err(McpError::internal_error(
-                format!("Failed to create task: {}", e),
+                format!("Failed to create task: {e}"),
                 None,
             )),
         }
@@ -164,11 +148,7 @@ impl TaskHandler {
         let input = params.0;
         match load_store() {
             Ok(store) => {
-                let priority_filter = if let Some(p) = input.priority {
-                    Priority::try_from(p).ok()
-                } else {
-                    None
-                };
+                let priority_filter = input.priority.and_then(|p| Priority::try_from(p).ok());
 
                 let tasks: Vec<TaskInfo> = store
                     .iter()
@@ -191,7 +171,7 @@ impl TaskHandler {
                     })
                     .map(|task| TaskInfo {
                         id: task.id(),
-                        description: task.description().to_string(),
+                        description: task.description().clone(),
                         priority: task.priority().map(|p| p as u8),
                         created: task.created().to_string(),
                         completed: task.completed().map(|c| c.to_string()),
@@ -208,7 +188,7 @@ impl TaskHandler {
                 })
             }
             Err(e) => Err(McpError::internal_error(
-                format!("Failed to load tasks: {}", e),
+                format!("Failed to load tasks: {e}"),
                 None,
             )),
         }
@@ -224,11 +204,17 @@ impl TaskHandler {
     ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         match load_store() {
-            Ok(store) => match store.get(input.id) {
-                Some(task) => {
+            Ok(store) => store.get(input.id).map_or_else(
+                || {
+                    Err(McpError::invalid_params(
+                        format!("Task {} not found", input.id),
+                        None,
+                    ))
+                },
+                |task| {
                     let info = TaskInfo {
                         id: task.id(),
-                        description: task.description().to_string(),
+                        description: task.description().clone(),
                         priority: task.priority().map(|p| p as u8),
                         created: task.created().to_string(),
                         completed: task.completed().map(|c| c.to_string()),
@@ -242,14 +228,10 @@ impl TaskHandler {
                         is_error: Some(false),
                         meta: None,
                     })
-                }
-                None => Err(McpError::invalid_params(
-                    format!("Task {} not found", input.id),
-                    None,
-                )),
-            },
+                },
+            ),
             Err(e) => Err(McpError::internal_error(
-                format!("Failed to load tasks: {}", e),
+                format!("Failed to load tasks: {e}"),
                 None,
             )),
         }
@@ -265,18 +247,17 @@ impl TaskHandler {
     ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         match load_and_save_store(|store| {
-            if let Some(task_ref) = store.get(input.id) {
-                let mut task = task_ref.task().clone();
-                task.mark_completed();
-                store.delete(input.id);
-                store.push(task);
-                Ok(json!({
-                    "id": input.id,
-                    "message": "Task marked as completed"
-                }))
-            } else {
-                Err(format!("Task {} not found", input.id))
-            }
+            let mut task = store
+                .get(input.id)
+                .map(|t| t.task().clone())
+                .ok_or_else(|| format!("Task {} not found", input.id))?;
+            task.mark_completed();
+            store.delete(input.id);
+            store.push(task);
+            Ok(json!({
+                "id": input.id,
+                "message": "Task marked as completed"
+            }))
         }) {
             Ok(result) => Ok(CallToolResult {
                 content: vec![Content::text(format!("Completed task {}", input.id))],
@@ -284,7 +265,10 @@ impl TaskHandler {
                 is_error: Some(false),
                 meta: None,
             }),
-            Err(e) => Err(McpError::invalid_params(format!("Failed to complete task: {}", e), None)),
+            Err(e) => Err(McpError::invalid_params(
+                format!("Failed to complete task: {e}"),
+                None,
+            )),
         }
     }
 
@@ -313,7 +297,10 @@ impl TaskHandler {
                 is_error: Some(false),
                 meta: None,
             }),
-            Err(e) => Err(McpError::invalid_params(format!("Failed to delete task: {}", e), None)),
+            Err(e) => Err(McpError::invalid_params(
+                format!("Failed to delete task: {e}"),
+                None,
+            )),
         }
     }
 
@@ -326,26 +313,21 @@ impl TaskHandler {
         params: Parameters<SetPriorityParams>,
     ) -> Result<CallToolResult, McpError> {
         let input = params.0;
-        let priority = if let Some(p) = input.priority {
-            Priority::try_from(p).ok()
-        } else {
-            None
-        };
+        let priority = input.priority.and_then(|p| Priority::try_from(p).ok());
 
         match load_and_save_store(|store| {
-            if let Some(task_ref) = store.get(input.id) {
-                let mut task = task_ref.task().clone();
-                task.set_priority(priority);
-                store.delete(input.id);
-                store.push(task);
-                Ok(json!({
-                    "id": input.id,
-                    "priority": priority.map(|p| p as u8),
-                    "message": "Priority updated"
-                }))
-            } else {
-                Err(format!("Task {} not found", input.id))
-            }
+            let mut task = store
+                .get(input.id)
+                .map(|t| t.task().clone())
+                .ok_or_else(|| format!("Task {} not found", input.id))?;
+            task.set_priority(priority);
+            store.delete(input.id);
+            store.push(task);
+            Ok(json!({
+                "id": input.id,
+                "priority": priority.map(|p| p as u8),
+                "message": "Priority updated"
+            }))
         }) {
             Ok(result) => Ok(CallToolResult {
                 content: vec![Content::text(format!("Set priority for task {}", input.id))],
@@ -353,7 +335,10 @@ impl TaskHandler {
                 is_error: Some(false),
                 meta: None,
             }),
-            Err(e) => Err(McpError::invalid_params(format!("Failed to set priority: {e}"), None)),
+            Err(e) => Err(McpError::invalid_params(
+                format!("Failed to set priority: {e}"),
+                None,
+            )),
         }
     }
 
@@ -368,11 +353,7 @@ impl TaskHandler {
         let input = params.0;
         match load_store() {
             Ok(store) => {
-                let priority_filter = if let Some(p) = input.priority {
-                    Priority::try_from(p).ok()
-                } else {
-                    None
-                };
+                let priority_filter = input.priority.and_then(|p| Priority::try_from(p).ok());
 
                 let tasks: Vec<TaskInfo> = store
                     .iter()
@@ -397,7 +378,7 @@ impl TaskHandler {
                     })
                     .map(|task| TaskInfo {
                         id: task.id(),
-                        description: task.description().to_string(),
+                        description: task.description().clone(),
                         priority: task.priority().map(|p| p as u8),
                         created: task.created().to_string(),
                         completed: task.completed().map(|c| c.to_string()),
@@ -414,7 +395,7 @@ impl TaskHandler {
                 })
             }
             Err(e) => Err(McpError::internal_error(
-                format!("Failed to search tasks: {}", e),
+                format!("Failed to search tasks: {e}"),
                 None,
             )),
         }

@@ -1,5 +1,5 @@
 use clap::Parser;
-use comfy_table::{presets::UTF8_HORIZONTAL_ONLY, Attribute, Cell, ContentArrangement, Table};
+use comfy_table::{Attribute, Cell, ContentArrangement, Table, presets::UTF8_HORIZONTAL_ONLY};
 use rustwarrior_core::Store;
 
 use crate::store_ext::StoreExt;

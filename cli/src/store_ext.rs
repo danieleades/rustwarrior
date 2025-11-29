@@ -1,7 +1,8 @@
 //! CLI-specific convenience methods for Store
 
-use rustwarrior_core::Store;
 use std::fs;
+
+use rustwarrior_core::Store;
 
 /// Extension trait for Store providing default path convenience methods
 pub trait StoreExt {
@@ -25,6 +26,7 @@ impl StoreExt for Store {
         let data_dir = rustwarrior_core::store::paths::get_data_dir()?;
         let tasks_file = rustwarrior_core::store::paths::get_tasks_file(Some(&data_dir))?;
         fs::create_dir_all(&data_dir)?;
-        self.save_to_path(&tasks_file).map_err(|e| anyhow::anyhow!(e))
+        self.save_to_path(&tasks_file)
+            .map_err(|e| anyhow::anyhow!(e))
     }
 }

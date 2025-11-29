@@ -12,9 +12,6 @@ use crate::task::Task;
 /// Path resolution for task storage
 pub mod paths;
 
-#[allow(dead_code)]
-const OPEN_TASKS_FILE: &str = "open_tasks.ndjson";
-
 /// A collection of [`Tasks`](Task).
 ///
 /// These are represented as [`OpenTasks`](OpenTask), which are simply a wrapper
@@ -55,7 +52,7 @@ impl Store {
     /// # Errors
     ///
     /// Returns an error if the file in the directory cannot be read.
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn load_from_dir(path: impl AsRef<Path>) -> Result<Self, Error> {
         let open_tasks = load_tasks_from_file(path.as_ref().join(OPEN_TASKS_FILE))?;
 
@@ -67,7 +64,7 @@ impl Store {
     /// # Errors
     ///
     /// Returns an error if the file cannot be written.
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn save_to_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
         save_tasks_to_file(&self.open_tasks, path.as_ref().join(OPEN_TASKS_FILE))
     }
@@ -86,9 +83,10 @@ impl Store {
     ///
     /// Returns the deleted task if found, otherwise `None`.
     pub fn delete(&mut self, id: usize) -> Option<OpenTask> {
-        self.open_tasks.iter().position(|t| t.id == id).map(|idx| {
-            self.open_tasks.remove(idx)
-        })
+        self.open_tasks
+            .iter()
+            .position(|t| t.id == id)
+            .map(|idx| self.open_tasks.remove(idx))
     }
 
     /// Get a task by ID
