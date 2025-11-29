@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const OPEN_TASKS_FILE: &str = "open_tasks.ndjson";
+const OPEN_TASKS_FILE: &str = "open_tasks.jsonl";
 
 /// Get the data directory for storing tasks
 ///
@@ -87,6 +87,6 @@ mod tests {
         let result = get_tasks_file(Some(temp.path()));
         assert!(result.is_ok());
         let file = result.unwrap();
-        assert!(file.ends_with("open_tasks.ndjson"));
+        assert!(file.ends_with("open_tasks.jsonl"));
     }
 }

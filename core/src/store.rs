@@ -47,28 +47,6 @@ impl Store {
         save_tasks_to_file(&self.open_tasks, path)
     }
 
-    /// Load tasks from a directory
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file in the directory cannot be read.
-    #[cfg(test)]
-    fn load_from_dir(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let open_tasks = load_tasks_from_file(path.as_ref().join(OPEN_TASKS_FILE))?;
-
-        Ok(Self { open_tasks })
-    }
-
-    /// Save tasks to a directory
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be written.
-    #[cfg(test)]
-    fn save_to_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        save_tasks_to_file(&self.open_tasks, path.as_ref().join(OPEN_TASKS_FILE))
-    }
-
     /// Add a [`Task`] to the [`Store`].
     ///
     /// Returns the new ID associated with the open [`Task`].
@@ -210,21 +188,22 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{OpenTask, Store};
-    use crate::task::Task;
+    use crate::{store::paths, task::Task};
 
     #[test]
-    fn save_to_directory() {
+    fn save_to_file() {
         let dir = TempDir::new().expect("unable to create temporary directory");
+        let tasks_file = paths::get_tasks_file(Some(dir.path())).unwrap();
 
-        let mut store = Store::load_from_dir(&dir).unwrap();
+        let mut store = Store::load_from_path(&tasks_file).unwrap();
 
         store.push(Task::new("some task".to_string()));
         store.push(Task::new("some task".to_string()));
         store.push(Task::new("some task".to_string()));
 
-        store.save_to_dir(&dir).unwrap();
+        store.save_to_path(&tasks_file).unwrap();
 
-        let store2 = Store::load_from_dir(&dir).unwrap();
+        let store2 = Store::load_from_path(&tasks_file).unwrap();
 
         assert_eq!(store, store2);
     }
