@@ -1,15 +1,28 @@
 //! Task management MCP server implementation
 
+mod resources;
+mod tools;
+
+use std::{future::Future, path::PathBuf};
+
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{
+        CallToolResult, ListResourcesResult, PaginatedRequestParam, ReadResourceRequestParam,
+        ReadResourceResult, ServerCapabilities, ServerInfo,
+    },
+    service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router,
 };
-use rustwarrior_core::{Priority, Store};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use rustwarrior_core::{OpenTask, Priority, Store};
+
+use self::{
+    resources::{
+        DOC_RESOURCE_URI, SERVER_INSTRUCTIONS, documentation_contents, documentation_resource,
+    },
+    tools::TaskInfo,
+};
 
 /// Task management server handler
 #[derive(Clone)]
@@ -18,84 +31,10 @@ pub struct TaskHandler {
     pub(crate) tool_router: ToolRouter<Self>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct CreateTaskParams {
-    pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<u8>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ListTasksParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filter: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<u8>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
-pub struct TaskInfo {
-    pub id: usize,
-    pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<u8>,
-    pub created: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed: Option<String>,
-    pub is_completed: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetTaskParams {
-    pub id: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct CompleteTaskParams {
-    pub id: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct DeleteTaskParams {
-    pub id: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct SetPriorityParams {
-    pub id: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<u8>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct SearchTasksParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub query: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<u8>,
-}
-
 impl Default for TaskHandler {
     fn default() -> Self {
         Self {
             tool_router: Self::tool_router(),
-        }
-    }
-}
-
-#[tool_handler]
-impl ServerHandler for TaskHandler {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some(
-                "RustWarrior task management server. Use create_task to add tasks, list_tasks to \
-                 view them, complete_task to mark done, delete_task to remove, set_priority to \
-                 change priority (1-4), search_tasks to find tasks by description, and get_task \
-                 to view a specific task."
-                    .to_owned(),
-            ),
-            ..ServerInfo::default()
         }
     }
 }
@@ -108,33 +47,9 @@ impl TaskHandler {
     )]
     async fn create_task(
         &self,
-        params: Parameters<CreateTaskParams>,
+        params: Parameters<tools::create_task::CreateTaskParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        let priority = input.priority.and_then(|p| Priority::try_from(p).ok());
-
-        match load_and_save_store(|store| {
-            let mut task = rustwarrior_core::Task::new(input.description);
-            if let Some(p) = priority {
-                task.set_priority(Some(p));
-            }
-            let id = store.push(task);
-            Ok(json!({
-                "id": id,
-                "message": "Task created successfully"
-            }))
-        }) {
-            Ok(result) => Ok(CallToolResult {
-                content: vec![Content::text(format!("Created task {}", result["id"]))],
-                structured_content: Some(result),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Err(e) => Err(McpError::internal_error(
-                format!("Failed to create task: {e}"),
-                None,
-            )),
-        }
+        tools::create_task::handle(params)
     }
 
     #[tool(
@@ -143,55 +58,9 @@ impl TaskHandler {
     )]
     async fn list_tasks(
         &self,
-        params: Parameters<ListTasksParams>,
+        params: Parameters<tools::list_tasks::ListTasksParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        match load_store() {
-            Ok(store) => {
-                let priority_filter = input.priority.and_then(|p| Priority::try_from(p).ok());
-
-                let tasks: Vec<TaskInfo> = store
-                    .iter()
-                    .filter(|task| {
-                        if let Some(f) = &input.filter {
-                            match f.as_str() {
-                                "active" if task.is_completed() => return false,
-                                "completed" if !task.is_completed() => return false,
-                                _ => {}
-                            }
-                        }
-
-                        if let Some(pf) = priority_filter {
-                            if task.priority() != Some(pf) {
-                                return false;
-                            }
-                        }
-
-                        true
-                    })
-                    .map(|task| TaskInfo {
-                        id: task.id(),
-                        description: task.description().clone(),
-                        priority: task.priority().map(|p| p as u8),
-                        created: task.created().to_string(),
-                        completed: task.completed().map(|c| c.to_string()),
-                        is_completed: task.is_completed(),
-                    })
-                    .collect();
-
-                let data = json!({ "tasks": tasks });
-                Ok(CallToolResult {
-                    content: vec![Content::text(format!("Listed {} tasks", tasks.len()))],
-                    structured_content: Some(data),
-                    is_error: Some(false),
-                    meta: None,
-                })
-            }
-            Err(e) => Err(McpError::internal_error(
-                format!("Failed to load tasks: {e}"),
-                None,
-            )),
-        }
+        tools::list_tasks::handle(params)
     }
 
     #[tool(
@@ -200,41 +69,9 @@ impl TaskHandler {
     )]
     async fn get_task(
         &self,
-        params: Parameters<GetTaskParams>,
+        params: Parameters<tools::get_task::GetTaskParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        match load_store() {
-            Ok(store) => store.get(input.id).map_or_else(
-                || {
-                    Err(McpError::invalid_params(
-                        format!("Task {} not found", input.id),
-                        None,
-                    ))
-                },
-                |task| {
-                    let info = TaskInfo {
-                        id: task.id(),
-                        description: task.description().clone(),
-                        priority: task.priority().map(|p| p as u8),
-                        created: task.created().to_string(),
-                        completed: task.completed().map(|c| c.to_string()),
-                        is_completed: task.is_completed(),
-                    };
-                    let data = serde_json::to_value(&info)
-                        .unwrap_or_else(|_| json!({"error": "serialization failed"}));
-                    Ok(CallToolResult {
-                        content: vec![Content::text(format!("Task {}", input.id))],
-                        structured_content: Some(data),
-                        is_error: Some(false),
-                        meta: None,
-                    })
-                },
-            ),
-            Err(e) => Err(McpError::internal_error(
-                format!("Failed to load tasks: {e}"),
-                None,
-            )),
-        }
+        tools::get_task::handle(params)
     }
 
     #[tool(
@@ -243,33 +80,9 @@ impl TaskHandler {
     )]
     async fn complete_task(
         &self,
-        params: Parameters<CompleteTaskParams>,
+        params: Parameters<tools::complete_task::CompleteTaskParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        match load_and_save_store(|store| {
-            let mut task = store
-                .get(input.id)
-                .map(|t| t.task().clone())
-                .ok_or_else(|| format!("Task {} not found", input.id))?;
-            task.mark_completed();
-            store.delete(input.id);
-            store.push(task);
-            Ok(json!({
-                "id": input.id,
-                "message": "Task marked as completed"
-            }))
-        }) {
-            Ok(result) => Ok(CallToolResult {
-                content: vec![Content::text(format!("Completed task {}", input.id))],
-                structured_content: Some(result),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Err(e) => Err(McpError::invalid_params(
-                format!("Failed to complete task: {e}"),
-                None,
-            )),
-        }
+        tools::complete_task::handle(params)
     }
 
     #[tool(
@@ -278,30 +91,9 @@ impl TaskHandler {
     )]
     async fn delete_task(
         &self,
-        params: Parameters<DeleteTaskParams>,
+        params: Parameters<tools::delete_task::DeleteTaskParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        match load_and_save_store(|store| {
-            if store.delete(input.id).is_some() {
-                Ok(json!({
-                    "id": input.id,
-                    "message": "Task deleted successfully"
-                }))
-            } else {
-                Err(format!("Task {} not found", input.id))
-            }
-        }) {
-            Ok(result) => Ok(CallToolResult {
-                content: vec![Content::text(format!("Deleted task {}", input.id))],
-                structured_content: Some(result),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Err(e) => Err(McpError::invalid_params(
-                format!("Failed to delete task: {e}"),
-                None,
-            )),
-        }
+        tools::delete_task::handle(params)
     }
 
     #[tool(
@@ -310,36 +102,9 @@ impl TaskHandler {
     )]
     async fn set_priority(
         &self,
-        params: Parameters<SetPriorityParams>,
+        params: Parameters<tools::set_priority::SetPriorityParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        let priority = input.priority.and_then(|p| Priority::try_from(p).ok());
-
-        match load_and_save_store(|store| {
-            let mut task = store
-                .get(input.id)
-                .map(|t| t.task().clone())
-                .ok_or_else(|| format!("Task {} not found", input.id))?;
-            task.set_priority(priority);
-            store.delete(input.id);
-            store.push(task);
-            Ok(json!({
-                "id": input.id,
-                "priority": priority.map(|p| p as u8),
-                "message": "Priority updated"
-            }))
-        }) {
-            Ok(result) => Ok(CallToolResult {
-                content: vec![Content::text(format!("Set priority for task {}", input.id))],
-                structured_content: Some(result),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Err(e) => Err(McpError::invalid_params(
-                format!("Failed to set priority: {e}"),
-                None,
-            )),
-        }
+        tools::set_priority::handle(params)
     }
 
     #[tool(
@@ -348,78 +113,117 @@ impl TaskHandler {
     )]
     async fn search_tasks(
         &self,
-        params: Parameters<SearchTasksParams>,
+        params: Parameters<tools::search_tasks::SearchTasksParams>,
     ) -> Result<CallToolResult, McpError> {
-        let input = params.0;
-        match load_store() {
-            Ok(store) => {
-                let priority_filter = input.priority.and_then(|p| Priority::try_from(p).ok());
-
-                let tasks: Vec<TaskInfo> = store
-                    .iter()
-                    .filter(|task| {
-                        if let Some(q) = &input.query {
-                            if !task
-                                .description()
-                                .to_lowercase()
-                                .contains(&q.to_lowercase())
-                            {
-                                return false;
-                            }
-                        }
-
-                        if let Some(pf) = priority_filter {
-                            if task.priority() != Some(pf) {
-                                return false;
-                            }
-                        }
-
-                        true
-                    })
-                    .map(|task| TaskInfo {
-                        id: task.id(),
-                        description: task.description().clone(),
-                        priority: task.priority().map(|p| p as u8),
-                        created: task.created().to_string(),
-                        completed: task.completed().map(|c| c.to_string()),
-                        is_completed: task.is_completed(),
-                    })
-                    .collect();
-
-                let data = json!({ "tasks": tasks });
-                Ok(CallToolResult {
-                    content: vec![Content::text(format!("Found {} tasks", tasks.len()))],
-                    structured_content: Some(data),
-                    is_error: Some(false),
-                    meta: None,
-                })
-            }
-            Err(e) => Err(McpError::internal_error(
-                format!("Failed to search tasks: {e}"),
-                None,
-            )),
-        }
+        tools::search_tasks::handle(params)
     }
 }
 
-fn load_store() -> Result<Store, Box<dyn std::error::Error>> {
-    let data_dir = rustwarrior_core::store::paths::get_data_dir()?;
-    let tasks_file = rustwarrior_core::store::paths::get_tasks_file(Some(&data_dir))?;
-    Store::load_from_path(&tasks_file).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+#[tool_handler]
+impl ServerHandler for TaskHandler {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+            instructions: Some(SERVER_INSTRUCTIONS.to_owned()),
+            ..ServerInfo::default()
+        }
+    }
+
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListResourcesResult::with_all_items(vec![
+            documentation_resource(),
+        ])))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+        std::future::ready(if request.uri == DOC_RESOURCE_URI {
+            Ok(ReadResourceResult {
+                contents: vec![documentation_contents()],
+            })
+        } else {
+            Err(McpError::invalid_params(
+                format!("Unknown resource {}", request.uri),
+                None,
+            ))
+        })
+    }
 }
 
-fn load_and_save_store<F, T>(f: F) -> Result<T, Box<dyn std::error::Error>>
+fn store_paths() -> Result<(PathBuf, PathBuf), McpError> {
+    let data_dir = rustwarrior_core::store::paths::get_data_dir().map_err(|e| {
+        McpError::internal_error(format!("Failed to resolve data directory: {e}"), None)
+    })?;
+    let tasks_file =
+        rustwarrior_core::store::paths::get_tasks_file(Some(&data_dir)).map_err(|e| {
+            McpError::internal_error(format!("Failed to resolve tasks file: {e}"), None)
+        })?;
+    Ok((data_dir, tasks_file))
+}
+
+fn load_store_with_paths() -> Result<(Store, PathBuf, PathBuf), McpError> {
+    let (data_dir, tasks_file) = store_paths()?;
+    let store = Store::load_from_path(&tasks_file)
+        .map_err(|e| McpError::internal_error(format!("Failed to load tasks: {e}"), None))?;
+    Ok((store, data_dir, tasks_file))
+}
+
+pub fn with_store<F, T>(f: F) -> Result<T, McpError>
 where
-    F: FnOnce(&mut Store) -> Result<T, String>,
+    F: FnOnce(&Store) -> Result<T, McpError>,
 {
-    let data_dir = rustwarrior_core::store::paths::get_data_dir()?;
-    let tasks_file = rustwarrior_core::store::paths::get_tasks_file(Some(&data_dir))?;
+    let (store, _, _) = load_store_with_paths()?;
+    f(&store)
+}
 
-    let mut store = Store::load_from_path(&tasks_file)?;
-    let result = f(&mut store)?;
+pub fn with_store_mut<F, T>(f: F) -> Result<T, McpError>
+where
+    F: FnOnce(&mut Store) -> Result<T, McpError>,
+{
+    let (mut store, data_dir, tasks_file) = load_store_with_paths()?;
+    let output = f(&mut store)?;
 
-    std::fs::create_dir_all(&data_dir)?;
-    store.save_to_path(&tasks_file)?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| {
+        McpError::internal_error(format!("Failed to prepare data directory: {e}"), None)
+    })?;
+    store
+        .save_to_path(&tasks_file)
+        .map_err(|e| McpError::internal_error(format!("Failed to save tasks: {e}"), None))?;
 
-    Ok(result)
+    Ok(output)
+}
+
+pub fn parse_priority(input: Option<u8>) -> Result<Option<Priority>, McpError> {
+    input
+        .map(Priority::try_from)
+        .transpose()
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))
+}
+
+pub fn normalize_filter(input: Option<&String>) -> Option<String> {
+    input
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(str::to_lowercase)
+}
+
+pub fn to_task_info(task: &OpenTask) -> TaskInfo {
+    TaskInfo {
+        id: task.id(),
+        description: task.description().clone(),
+        priority: task.priority().map(u8::from),
+        created: task.created().to_string(),
+        completed: task.completed().map(|c| c.to_string()),
+        is_completed: task.is_completed(),
+    }
 }
