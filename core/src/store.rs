@@ -75,6 +75,14 @@ impl Store {
         self.open_tasks.iter().find(|t| t.id == id)
     }
 
+    /// Get a mutable task by ID
+    ///
+    /// Returns a mutable reference to the task if found, otherwise `None`.
+    #[must_use]
+    pub fn get_mut(&mut self, id: usize) -> Option<&mut OpenTask> {
+        self.open_tasks.iter_mut().find(|t| t.id == id)
+    }
+
     /// Iterate over all tasks in the store
     pub fn iter(&self) -> std::slice::Iter<'_, OpenTask> {
         self.open_tasks.iter()
