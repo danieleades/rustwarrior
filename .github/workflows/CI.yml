@@ -43,8 +43,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
     - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        rust-version: 1.90.0
 
   msrv:
     runs-on: ubuntu-latest
