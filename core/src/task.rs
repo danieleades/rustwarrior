@@ -67,7 +67,7 @@ impl Task {
     }
 
     /// Set the priority of this task
-    pub fn set_priority(&mut self, priority: Option<Priority>) {
+    pub const fn set_priority(&mut self, priority: Option<Priority>) {
         self.priority = priority;
     }
 
@@ -91,7 +91,7 @@ impl Task {
     }
 
     /// Mark the task as active (not completed)
-    pub fn mark_active(&mut self) {
+    pub const fn mark_active(&mut self) {
         self.completed = None;
     }
 }

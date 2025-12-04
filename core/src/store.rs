@@ -178,7 +178,7 @@ impl OpenTask {
 
     /// Get a mutable reference to the task
     #[must_use]
-    pub fn task_mut(&mut self) -> &mut Task {
+    pub const fn task_mut(&mut self) -> &mut Task {
         &mut self.task
     }
 }
