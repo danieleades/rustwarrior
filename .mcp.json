@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "rustwarrior": {
+      "type": "stdio",
+      "command": "cargo",
+      "args": [
+        "run",
+        "-r",
+        "--manifest-path",
+        "${PWD}/Cargo.toml",
+        "--bin",
+        "rustwarrior-mcp-server"
+      ],
+      "env": {
+        "RUSTWARRIOR_DATA_DIR": "${PWD}/.rustwarrior"
+      }
+    }
+  }
+}

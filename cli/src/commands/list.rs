@@ -1,21 +1,24 @@
 use clap::Parser;
-use comfy_table::{presets::UTF8_HORIZONTAL_ONLY, Attribute, Cell, ContentArrangement, Table};
-use rustwarrior::Store;
+use comfy_table::{Attribute, Cell, ContentArrangement, Table, presets::UTF8_HORIZONTAL_ONLY};
+use rustwarrior_core::Store;
 
+use crate::store_ext::StoreExt;
+
+/// List all tasks
 #[derive(Debug, Default, Parser)]
-pub struct List {}
+pub struct List;
 
 impl List {
+    /// Run the list command
     pub fn run() -> anyhow::Result<()> {
-        let store = Store::load()?;
+        let store = Store::load_default()?;
         if store.is_empty() {
             println!("no tasks to display");
             return Ok(());
         }
         let mut table = Table::new();
 
-        let has_priority = (&store).into_iter().any(|task| task.priority().is_some());
-        println!("has priority: {has_priority:?}");
+        let has_priority = store.into_iter().any(|task| task.priority().is_some());
 
         let mut header = vec![Cell::new("ID").add_attribute(Attribute::Bold)];
         if has_priority {

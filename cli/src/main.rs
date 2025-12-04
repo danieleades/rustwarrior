@@ -7,9 +7,17 @@
     missing_docs
 )]
 #![warn(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::cargo_common_metadata)]
 
-mod store;
-mod task;
+mod cli;
+mod commands;
+mod store_ext;
 
-pub use store::Store;
-pub use task::{Priority, Task};
+use cli::Cli;
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::default();
+    cli.run()?;
+
+    Ok(())
+}

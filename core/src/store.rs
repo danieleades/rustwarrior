@@ -1,24 +1,16 @@
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write},
     ops::Deref,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::task::Task;
 
-const OPEN_TASKS_FILE: &str = "open_tasks.ndjson";
-
-fn default_data_dir() -> io::Result<PathBuf> {
-    let dir = dirs::data_dir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "couldn't find data directory"))?
-        .join("rustwarrior");
-
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
+/// Path resolution for task storage
+pub mod paths;
 
 /// A collection of [`Tasks`](Task).
 ///
@@ -30,22 +22,29 @@ pub struct Store {
 }
 
 impl Store {
-    fn load_from_dir(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let open_tasks = load_tasks_from_file(path.as_ref().join(OPEN_TASKS_FILE))?;
-
-        Ok(Self { open_tasks })
+    /// Create a new empty [`Store`]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Load the [`Tasks`](Task) from the default location on disk.
-    ///
-    /// Creates the directory and data file if not present.
+    /// Load tasks from a specific file path
     ///
     /// # Errors
     ///
-    /// This method can fail if the default data location cannot be determined,
-    /// or is not read/writeable.
-    pub fn load() -> Result<Self, Error> {
-        Self::load_from_dir(default_data_dir()?)
+    /// Returns an error if the file cannot be read or parsed.
+    pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let open_tasks = load_tasks_from_file(path)?;
+        Ok(Self { open_tasks })
+    }
+
+    /// Save tasks to a specific file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        save_tasks_to_file(&self.open_tasks, path)
     }
 
     /// Add a [`Task`] to the [`Store`].
@@ -58,30 +57,35 @@ impl Store {
         id
     }
 
-    fn save_to_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        save_tasks_to_file(&self.open_tasks, path.as_ref().join(OPEN_TASKS_FILE))
+    /// Delete a task by ID
+    ///
+    /// Returns the deleted task if found, otherwise `None`.
+    pub fn delete(&mut self, id: usize) -> Option<OpenTask> {
+        self.open_tasks
+            .iter()
+            .position(|t| t.id == id)
+            .map(|idx| self.open_tasks.remove(idx))
     }
 
-    /// Save the [`Tasks`](Task) to the default location on disk.
+    /// Get a task by ID
     ///
-    /// Creates the directory and data file if not present.
-    ///
-    /// # Errors
-    ///
-    /// This method can fail if the default data location cannot be determined,
-    /// or is not writeable.
-    pub fn save(&self) -> io::Result<()> {
-        self.save_to_dir(default_data_dir()?)
+    /// Returns a reference to the task if found, otherwise `None`.
+    #[must_use]
+    pub fn get(&self, id: usize) -> Option<&OpenTask> {
+        self.open_tasks.iter().find(|t| t.id == id)
     }
 
-    fn first_missing_id(&self) -> usize {
-        let mut ids: Vec<usize> = self.open_tasks.iter().map(|task| task.id).collect();
-        ids.sort_unstable();
+    /// Get a mutable task by ID
+    ///
+    /// Returns a mutable reference to the task if found, otherwise `None`.
+    #[must_use]
+    pub fn get_mut(&mut self, id: usize) -> Option<&mut OpenTask> {
+        self.open_tasks.iter_mut().find(|t| t.id == id)
+    }
 
-        ids.iter()
-            .enumerate()
-            .find(|(idx, id)| idx != *id)
-            .map_or(ids.len(), |(idx, _id)| idx)
+    /// Iterate over all tasks in the store
+    pub fn iter(&self) -> std::slice::Iter<'_, OpenTask> {
+        self.open_tasks.iter()
     }
 
     /// Returns the number of [`Tasks`](Task) in the [`Store`]
@@ -95,6 +99,16 @@ impl Store {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    fn first_missing_id(&self) -> usize {
+        let mut ids: Vec<usize> = self.open_tasks.iter().map(|task| task.id).collect();
+        ids.sort_unstable();
+
+        ids.iter()
+            .enumerate()
+            .find(|(idx, id)| idx != *id)
+            .map_or(ids.len(), |(idx, _id)| idx)
+    }
 }
 
 fn load_tasks_from_file(path: impl AsRef<Path>) -> Result<Vec<OpenTask>, Error> {
@@ -102,6 +116,7 @@ fn load_tasks_from_file(path: impl AsRef<Path>) -> Result<Vec<OpenTask>, Error> 
         .create(true)
         .write(true)
         .read(true)
+        .truncate(false)
         .open(path)?;
     BufReader::new(tasks_file)
         .lines()
@@ -113,7 +128,7 @@ fn save_tasks_to_file(tasks: &[OpenTask], path: impl AsRef<Path>) -> io::Result<
     let mut writer = BufWriter::new(File::create(path)?);
     tasks.iter().try_for_each(|task| {
         serde_json::to_writer(&mut writer, task)?;
-        writer.write_all(&[b'\n'])
+        writer.write_all(b"\n")
     })?;
 
     writer.flush()
@@ -128,13 +143,19 @@ impl<'a> IntoIterator for &'a Store {
     }
 }
 
+/// Error type for store operations
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to load tasks from file: {0}")]
 pub enum Error {
+    /// JSON serialization error
     Json(#[from] serde_json::Error),
+    /// IO error
     Io(#[from] io::Error),
 }
 
+/// A task with an assigned ID for display
+///
+/// Wraps a [`Task`] and adds a sequential ID field for use in CLI display.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OpenTask {
     id: usize,
@@ -143,8 +164,22 @@ pub struct OpenTask {
 }
 
 impl OpenTask {
+    /// Get the ID of this task
+    #[must_use]
     pub const fn id(&self) -> usize {
         self.id
+    }
+
+    /// Get a reference to the task
+    #[must_use]
+    pub const fn task(&self) -> &Task {
+        &self.task
+    }
+
+    /// Get a mutable reference to the task
+    #[must_use]
+    pub const fn task_mut(&mut self) -> &mut Task {
+        &mut self.task
     }
 }
 
@@ -161,21 +196,22 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{OpenTask, Store};
-    use crate::task::Task;
+    use crate::{store::paths, task::Task};
 
     #[test]
-    fn save_to_directory() {
+    fn save_to_file() {
         let dir = TempDir::new().expect("unable to create temporary directory");
+        let tasks_file = paths::get_tasks_file(Some(dir.path())).unwrap();
 
-        let mut store = Store::load_from_dir(&dir).unwrap();
+        let mut store = Store::load_from_path(&tasks_file).unwrap();
 
         store.push(Task::new("some task".to_string()));
         store.push(Task::new("some task".to_string()));
         store.push(Task::new("some task".to_string()));
 
-        store.save_to_dir(&dir).unwrap();
+        store.save_to_path(&tasks_file).unwrap();
 
-        let store2 = Store::load_from_dir(&dir).unwrap();
+        let store2 = Store::load_from_path(&tasks_file).unwrap();
 
         assert_eq!(store, store2);
     }
