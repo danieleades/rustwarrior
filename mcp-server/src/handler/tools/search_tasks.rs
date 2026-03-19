@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::TaskInfo;
-use crate::handler::{normalize_filter, parse_priority, to_task_info, with_store};
+use crate::handler::{
+    matches_priority_and_project, normalize_filter, parse_priority, parse_project, to_task_info,
+    with_store,
+};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SearchTasksParams {
@@ -16,12 +19,15 @@ pub struct SearchTasksParams {
     pub query: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 pub fn handle(params: Parameters<SearchTasksParams>) -> Result<CallToolResult, McpError> {
     let input = params.0;
     let priority_filter = parse_priority(input.priority)?;
-    let query = normalize_filter(input.query.as_ref());
+    let project_filter = parse_project(input.project)?;
+    let query = normalize_filter(input.query.as_deref());
 
     let tasks: Vec<TaskInfo> = with_store(|store| {
         let tasks = store
@@ -33,13 +39,7 @@ pub fn handle(params: Parameters<SearchTasksParams>) -> Result<CallToolResult, M
                     }
                 }
 
-                if let Some(pf) = priority_filter {
-                    if task.priority() != Some(pf) {
-                        return false;
-                    }
-                }
-
-                true
+                matches_priority_and_project(task, priority_filter, project_filter.as_ref())
             })
             .map(to_task_info)
             .collect();

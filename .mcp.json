@@ -9,7 +9,11 @@
         "--manifest-path",
         "${PWD}/Cargo.toml",
         "--bin",
-        "rustwarrior-mcp-server"
+        "rw",
+        "--features",
+        "mcp",
+        "--",
+        "mcp"
       ],
       "env": {
         "RUSTWARRIOR_DATA_DIR": "${PWD}/.rustwarrior"

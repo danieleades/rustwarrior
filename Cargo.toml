@@ -1,5 +1,34 @@
+[package]
+name = "rustwarrior"
+description = "Command-line task tracking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rw"
+path = "src/main.rs"
+
+[features]
+default = []
+mcp = ["dep:rustwarrior-mcp-server"]
+
+[dependencies]
+rustwarrior-core = { path = "core" }
+rustwarrior-mcp-server = { path = "mcp-server", optional = true }
+anyhow = "1.0.68"
+clap = { version = "4", features = ["derive"] }
+comfy-table = "7"
+
+[dev-dependencies]
+shlex = "1.1.0"
+tempfile = "3.3.0"
+test-case = "3"
+
 [workspace]
-members = ["core", "cli", "mcp-server"]
+members = ["core", "mcp-server"]
 resolver = "2"
 
 [workspace.package]
@@ -18,3 +47,6 @@ all = "deny"
 pedantic = "warn"
 nursery = "warn"
 #cargo = "warn"
+
+[lints]
+workspace = true

@@ -7,10 +7,6 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "rustwarrior-mcp-server"
-path = "src/main.rs"
-
 [dependencies]
 rustwarrior-core = { path = "../core" }
 rmcp = { version = "0.10", features = ["server", "transport-io", "macros"] }
@@ -22,6 +18,9 @@ chrono = { version = "0.4.23", default-features = false, features = ["clock", "s
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.3.0"
 
 [lints]
 workspace = true

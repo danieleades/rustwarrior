@@ -1,6 +1,8 @@
 use clap::Parser;
 
-use crate::commands::{add::Add, list::List};
+#[cfg(feature = "mcp")]
+use crate::commands::mcp::Mcp;
+use crate::commands::{add::Add, info::Info, list::List};
 
 #[derive(Debug, Parser)]
 pub struct Cli {
@@ -20,18 +22,29 @@ impl Cli {
     }
 }
 
-#[derive(Debug, Parser, Default)]
+#[derive(Debug, Parser)]
 pub enum Command {
     Add(Add),
-    #[default]
-    List,
+    Info,
+    List(List),
+    #[cfg(feature = "mcp")]
+    Mcp,
+}
+
+impl Default for Command {
+    fn default() -> Self {
+        Self::List(List::default())
+    }
 }
 
 impl Command {
     pub fn run(self) -> anyhow::Result<()> {
         match self {
             Self::Add(add) => add.run(),
-            Self::List => List::run(),
+            Self::Info => Info::run(),
+            Self::List(list) => list.run(),
+            #[cfg(feature = "mcp")]
+            Self::Mcp => Mcp::run(),
         }
     }
 }
@@ -44,12 +57,21 @@ mod tests {
     use super::Cli;
 
     #[test_case("rw" ; "empty")]
-    #[test_case("rw list")]
+    #[test_case("rw list" ; "list")]
+    #[test_case("rw list --project Home.Garden" ; "list project")]
+    #[test_case("rw info")]
     #[test_case(r#"rw add "some new task""# ; "add")]
     #[test_case(r#"rw add "some new task" -p 1"# ; "priority short")]
     #[test_case(r#"rw add "some new task" --priority 1"# ; "priority long")]
     #[test_case(r#"rw add "some new task" --priority=1"# ; "priority long alt")]
+    #[test_case(r#"rw add "some new task" --project Home.Garden"# ; "project")]
     fn parse(input: &str) {
         Cli::parse_from(shlex::split(input).unwrap());
+    }
+
+    #[cfg(feature = "mcp")]
+    #[test]
+    fn parse_mcp() {
+        Cli::parse_from(shlex::split("rw mcp").unwrap());
     }
 }
