@@ -10,9 +10,10 @@ When to use: when asked to manage todos or remember personal/project tasks. Good
 Storage: tasks persist in open_tasks.jsonl under RUSTWARRIOR_DATA_DIR or your platform data dir (single-user/local).
 
 Tools
-- create_task(description, priority 1-4)
-- list_tasks(filter: active | completed | free-text, priority 1-4)
-- search_tasks(query, priority 1-4)
+- info()
+- create_task(description, priority 1-4, project)
+- list_tasks(filter: active | completed | free-text, priority 1-4, project)
+- search_tasks(query, priority 1-4, project)
 - get_task(id)
 - set_priority(id, priority 1-4 or null to clear)
 - complete_task(id)
@@ -21,6 +22,7 @@ Tools
 Semantics
 - Priorities: 1 is highest, 4 is lowest. Invalid values return errors.
 - Filters: 'active' hides completed tasks, 'completed' hides active tasks, anything else filters descriptions case-insensitively.
+- Project filters are hierarchical: filtering `Home` includes `Home` and descendants like `Home.Garden`.
 - IDs are zero-based and stable per task.
 - Time stamps are UTC strings and may differ from local time.
 
@@ -30,7 +32,7 @@ Typical flow
 
 pub(super) const SERVER_INSTRUCTIONS: &str = r"RustWarrior task MCP server for managing todos or personal/project tasks. Use it when the user asks to remember or track tasks.
 Tasks are stored locally (RUSTWARRIOR_DATA_DIR or platform data dir).
-Tools: create_task(description, priority 1-4), list_tasks(filter=active|completed|text, priority 1-4), search_tasks(query, priority 1-4), get_task(id),
+Tools: info(), create_task(description, priority 1-4, project), list_tasks(filter=active|completed|text, priority 1-4, project), search_tasks(query, priority 1-4, project), get_task(id),
 set_priority(id, priority 1-4 or null), complete_task(id), delete_task(id).
 Docs: rustwarrior://tasks/guide (what/when/how, filters, priority rules).";
 

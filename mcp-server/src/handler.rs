@@ -15,7 +15,7 @@ use rmcp::{
     service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router,
 };
-use rustwarrior_core::{OpenTask, Priority, Store};
+use rustwarrior_core::{OpenTask, Priority, Project, Store};
 
 use self::{
     resources::{
@@ -50,6 +50,17 @@ impl TaskHandler {
         params: Parameters<tools::create_task::CreateTaskParams>,
     ) -> Result<CallToolResult, McpError> {
         tools::create_task::handle(params)
+    }
+
+    #[tool(
+        description = "Show RustWarrior storage and configuration information",
+        annotations(read_only_hint = true, idempotent_hint = true)
+    )]
+    async fn info(
+        &self,
+        params: Parameters<tools::info::InfoParams>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::info::handle(params)
     }
 
     #[tool(
@@ -210,18 +221,46 @@ pub fn parse_priority(input: Option<u8>) -> Result<Option<Priority>, McpError> {
         .map_err(|e| McpError::invalid_params(e.to_string(), None))
 }
 
-pub fn normalize_filter(input: Option<&String>) -> Option<String> {
+pub fn parse_project(input: Option<String>) -> Result<Option<Project>, McpError> {
     input
-        .map(|value| value.trim())
+        .map(Project::try_from)
+        .transpose()
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))
+}
+
+pub fn normalize_filter(input: Option<&str>) -> Option<String> {
+    input
+        .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_lowercase)
+}
+
+pub fn matches_priority_and_project(
+    task: &OpenTask,
+    priority: Option<Priority>,
+    project: Option<&Project>,
+) -> bool {
+    if let Some(priority) = priority {
+        if task.priority() != Some(priority) {
+            return false;
+        }
+    }
+
+    if let Some(project) = project {
+        if !task.matches_project(project) {
+            return false;
+        }
+    }
+
+    true
 }
 
 pub fn to_task_info(task: &OpenTask) -> TaskInfo {
     TaskInfo {
         id: task.id(),
-        description: task.description().clone(),
+        description: task.description().to_owned(),
         priority: task.priority().map(u8::from),
+        project: task.project().map(ToString::to_string),
         created: task.created().to_string(),
         completed: task.completed().map(|c| c.to_string()),
         is_completed: task.is_completed(),

@@ -196,7 +196,10 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{OpenTask, Store};
-    use crate::{store::paths, task::Task};
+    use crate::{
+        store::paths,
+        task::{Project, Task},
+    };
 
     #[test]
     fn save_to_file() {
@@ -205,7 +208,10 @@ mod tests {
 
         let mut store = Store::load_from_path(&tasks_file).unwrap();
 
-        store.push(Task::new("some task".to_string()));
+        store.push(
+            Task::new("some task".to_string())
+                .with_project("work.release".parse::<Project>().unwrap()),
+        );
         store.push(Task::new("some task".to_string()));
         store.push(Task::new("some task".to_string()));
 

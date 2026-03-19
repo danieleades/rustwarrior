@@ -2,9 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use self::priority::Priority;
+pub use self::{priority::Priority, project::Project};
 
 mod priority;
+mod project;
 
 /// A task to be completed
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -16,6 +17,8 @@ pub struct Task {
     completed: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     priority: Option<Priority>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project: Option<Project>,
 }
 
 impl Task {
@@ -26,12 +29,14 @@ impl Task {
         let created = Utc::now();
         let completed = None;
         let priority = None;
+        let project = None;
         Self {
             uuid,
             created,
             description,
             completed,
             priority,
+            project,
         }
     }
 
@@ -49,8 +54,35 @@ impl Task {
 
     /// The description of the [`Task`]
     #[must_use]
-    pub const fn description(&self) -> &String {
+    pub fn description(&self) -> &str {
         &self.description
+    }
+
+    /// Set the project of the [`Task`]
+    #[must_use]
+    pub fn with_project(mut self, project: Project) -> Self {
+        self.project = Some(project);
+        self
+    }
+
+    /// The [`Task`] project
+    #[must_use]
+    pub const fn project(&self) -> Option<&Project> {
+        self.project.as_ref()
+    }
+
+    /// Set the project of this task
+    pub fn set_project(&mut self, project: Option<Project>) {
+        self.project = project;
+    }
+
+    /// Check whether the task belongs to the provided project or one of its
+    /// subprojects
+    #[must_use]
+    pub fn matches_project(&self, project: &Project) -> bool {
+        self.project
+            .as_ref()
+            .is_some_and(|task_project| task_project.is_in(project))
     }
 
     /// Set the priority of the [`Task`]
@@ -104,11 +136,11 @@ mod tests {
     use test_case::test_case;
     use uuid::uuid;
 
-    use super::{Priority, Task};
+    use super::{Priority, Project, Task};
 
     #[test_case(
         r#"{"uuid":"ee00fce2-f349-42b1-969e-17d4c6c612f5","created":"2023-01-14T09:57:04.275194707Z","description":"some made up task"}"#
-        => Task {uuid: uuid!("ee00fce2-f349-42b1-969e-17d4c6c612f5"), created: DateTime::<Utc>::from_str("2023-01-14T09:57:04.275194707Z").unwrap(), description: "some made up task".to_string(), completed: None, priority: None}
+        => Task {uuid: uuid!("ee00fce2-f349-42b1-969e-17d4c6c612f5"), created: DateTime::<Utc>::from_str("2023-01-14T09:57:04.275194707Z").unwrap(), description: "some made up task".to_string(), completed: None, priority: None, project: None}
         ; "minimal"
     )]
     #[test_case(
@@ -118,9 +150,22 @@ mod tests {
             created: DateTime::<Utc>::from_str("2023-01-14T09:57:04.275194707Z").unwrap(),
             description: "some made up task".to_string(),
             completed: None,
-            priority: Some(Priority::Two)
+            priority: Some(Priority::Two),
+            project: None,
         }
         ; "priority"
+    )]
+    #[test_case(
+        r#"{"uuid":"ee00fce2-f349-42b1-969e-17d4c6c612f5","created":"2023-01-14T09:57:04.275194707Z","description":"some made up task", "project": "Home.Garden"}"#
+        => Task {
+            uuid: uuid!("ee00fce2-f349-42b1-969e-17d4c6c612f5"),
+            created: DateTime::<Utc>::from_str("2023-01-14T09:57:04.275194707Z").unwrap(),
+            description: "some made up task".to_string(),
+            completed: None,
+            priority: None,
+            project: Some(Project::from_str("Home.Garden").unwrap()),
+        }
+        ; "project"
     )]
     fn deserialise(input: &str) -> Task {
         serde_json::from_str(input).unwrap()
@@ -133,5 +178,18 @@ mod tests {
 
         let task2 = Task::new("description".to_string()).with_priority(Priority::Three);
         assert!(matches!(task2.priority(), Some(Priority::Three)));
+    }
+
+    #[test]
+    fn project() {
+        let task = Task::new("description".to_string());
+        assert!(task.project().is_none());
+
+        let task2 = Task::new("description".to_string())
+            .with_project(Project::from_str("Home.Garden").unwrap());
+        assert_eq!(task2.project().map(Project::as_str), Some("Home.Garden"));
+        assert!(task2.matches_project(&Project::from_str("Home").unwrap()));
+        assert!(task2.matches_project(&Project::from_str("Home.Garden").unwrap()));
+        assert!(!task2.matches_project(&Project::from_str("Work").unwrap()));
     }
 }

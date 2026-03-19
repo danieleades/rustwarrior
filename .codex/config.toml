@@ -1,0 +1,9 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+[mcp_servers.rustwarrior]
+command = "sh"
+args = [
+  "-lc",
+  "RUSTWARRIOR_DATA_DIR=\"$PWD/.rustwarrior\" cargo run -r --manifest-path \"$PWD/Cargo.toml\" --bin rw --features mcp -- mcp",
+]
+startup_timeout_sec = 60.0

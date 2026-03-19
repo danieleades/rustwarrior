@@ -15,4 +15,4 @@ pub mod store;
 pub mod task;
 
 pub use store::{Error as StoreError, OpenTask, Store, paths};
-pub use task::{Priority, Task};
+pub use task::{Priority, Project, Task};
